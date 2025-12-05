@@ -107,6 +107,7 @@ func MoveResizeApp(ctx context.Context, req *mcp.CallToolRequest, args MoveResiz
 		return nil, nil, fmt.Errorf("width and height must be > 0")
 	}
 
+	// First set size, then position - this order helps with secondary display positioning
 	script := fmt.Sprintf(`
 tell application "System Events"
 	if not (exists application process "%[1]s") then
@@ -118,8 +119,9 @@ tell application "System Events"
 			error "Application '%[1]s' has no windows."
 		end if
 		tell window 1
-			set position to {%[2]d, %[3]d}
 			set size to {%[4]d, %[5]d}
+			delay 0.1
+			set position to {%[2]d, %[3]d}
 		end tell
 	end tell
 end tell
@@ -320,13 +322,13 @@ end tell
 
 	text := fmt.Sprintf("Found %d windows across all applications", len(windows))
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: text},
-		},
-	}, ListAllWindowsResult{
-		Windows: windows,
-		Count:   len(windows),
-	}, nil
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: text},
+			},
+		}, ListAllWindowsResult{
+			Windows: windows,
+			Count:   len(windows),
+		}, nil
 }
 
 // ---------- Tool 5: Get all windows for a specific app ----------
@@ -410,14 +412,14 @@ end tell
 
 	text := fmt.Sprintf("Application '%s' has %d window(s)", args.AppName, len(windows))
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: text},
-		},
-	}, GetAppAllWindowsResult{
-		AppName: args.AppName,
-		Windows: windows,
-		Count:   len(windows),
-	}, nil
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: text},
+			},
+		}, GetAppAllWindowsResult{
+			AppName: args.AppName,
+			Windows: windows,
+			Count:   len(windows),
+		}, nil
 }
 
 // ---------- Tool 6: Move + resize specific app window by index ----------
@@ -475,15 +477,16 @@ end tell
 // ---------- Tool 7: List all screens / displays ----------
 
 type DisplayInfo struct {
-	Index  int    `json:"index" jsonschema:"Display index (0 = main display with menu bar)"`
-	Name   string `json:"name" jsonschema:"Display name"`
-	Left   int    `json:"left" jsonschema:"Left coordinate in pixels"`
-	Top    int    `json:"top" jsonschema:"Top coordinate in pixels"`
-	Right  int    `json:"right" jsonschema:"Right coordinate in pixels"`
-	Bottom int    `json:"bottom" jsonschema:"Bottom coordinate in pixels"`
-	Width  int    `json:"width" jsonschema:"Width in pixels"`
-	Height int    `json:"height" jsonschema:"Height in pixels"`
-	IsMain bool   `json:"isMain" jsonschema:"Whether this is the main display with menu bar"`
+	Index   int    `json:"index" jsonschema:"Display index (0 = main display with menu bar)"`
+	Name    string `json:"name" jsonschema:"Display name"`
+	Left    int    `json:"left" jsonschema:"Left coordinate in pixels"`
+	Top     int    `json:"top" jsonschema:"Top coordinate in pixels"`
+	Right   int    `json:"right" jsonschema:"Right coordinate in pixels"`
+	Bottom  int    `json:"bottom" jsonschema:"Bottom coordinate in pixels"`
+	Width   int    `json:"width" jsonschema:"Width in pixels"`
+	Height  int    `json:"height" jsonschema:"Height in pixels"`
+	IsMain  bool   `json:"isMain" jsonschema:"Whether this is the main display with menu bar"`
+	Rotated bool   `json:"rotated" jsonschema:"Whether this display is rotated to portrait orientation"`
 }
 
 type ListAllScreensResult struct {
@@ -537,59 +540,62 @@ end tell
 	if err != nil {
 		// If system_profiler fails, fall back to single display
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Found 1 display (fallback): %dx%d", totalWidth, totalHeight)},
-			},
-		}, ListAllScreensResult{
-			Displays: []DisplayInfo{
-				{
-					Index:  0,
-					Name:   "Main Display",
-					Left:   totalLeft,
-					Top:    totalTop,
-					Right:  totalRight,
-					Bottom: totalBottom,
-					Width:  totalWidth,
-					Height: totalHeight,
-					IsMain: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Found 1 display (fallback): %dx%d", totalWidth, totalHeight)},
 				},
-			},
-			Count:       1,
-			TotalWidth:  totalWidth,
-			TotalHeight: totalHeight,
-		}, nil
+			}, ListAllScreensResult{
+				Displays: []DisplayInfo{
+					{
+						Index:   0,
+						Name:    "Main Display",
+						Left:    totalLeft,
+						Top:     totalTop,
+						Right:   totalRight,
+						Bottom:  totalBottom,
+						Width:   totalWidth,
+						Height:  totalHeight,
+						IsMain:  true,
+						Rotated: totalHeight > totalWidth,
+					},
+				},
+				Count:       1,
+				TotalWidth:  totalWidth,
+				TotalHeight: totalHeight,
+			}, nil
 	}
 
 	var profilerData systemProfilerData
 	if err := json.Unmarshal([]byte(profilerOut), &profilerData); err != nil {
 		// If JSON parsing fails, fall back to single display
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Found 1 display (fallback): %dx%d", totalWidth, totalHeight)},
-			},
-		}, ListAllScreensResult{
-			Displays: []DisplayInfo{
-				{
-					Index:  0,
-					Name:   "Main Display",
-					Left:   totalLeft,
-					Top:    totalTop,
-					Right:  totalRight,
-					Bottom: totalBottom,
-					Width:  totalWidth,
-					Height: totalHeight,
-					IsMain: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Found 1 display (fallback): %dx%d", totalWidth, totalHeight)},
 				},
-			},
-			Count:       1,
-			TotalWidth:  totalWidth,
-			TotalHeight: totalHeight,
-		}, nil
+			}, ListAllScreensResult{
+				Displays: []DisplayInfo{
+					{
+						Index:   0,
+						Name:    "Main Display",
+						Left:    totalLeft,
+						Top:     totalTop,
+						Right:   totalRight,
+						Bottom:  totalBottom,
+						Width:   totalWidth,
+						Height:  totalHeight,
+						IsMain:  true,
+						Rotated: totalHeight > totalWidth,
+					},
+				},
+				Count:       1,
+				TotalWidth:  totalWidth,
+				TotalHeight: totalHeight,
+			}, nil
 	}
 
 	// Extract displays from system_profiler output
 	var displays []DisplayInfo
 	displayIndex := 0
+	currentX := totalLeft // Start from the actual left edge of the virtual desktop
 
 	if len(profilerData.SPDisplaysDataType) > 0 {
 		for _, gpu := range profilerData.SPDisplaysDataType {
@@ -611,32 +617,38 @@ end tell
 					}
 				}
 
-				// For simplicity, assume horizontal layout left-to-right
-				// Main display is at (0, 0)
-				left := 0
-				top := 0
+				// Determine if this display is rotated (portrait orientation)
+				isRotated := height > width
+
+				// Calculate position in the virtual coordinate space
+				// Main display starts at x=0 (or totalLeft if offset)
+				// Other displays are positioned horizontally to the right
+				left := currentX
+
+				// For vertical positioning: align displays at the top of the virtual space
+				// This accounts for menu bar and different display heights
+				top := totalTop
+
 				if isMain {
-					// Main display at origin
+					// Main display typically starts at x=0 in the virtual space
 					left = 0
-					top = 0
-				} else if len(displays) > 0 {
-					// Place next to previous display (simple horizontal layout)
-					lastDisplay := displays[len(displays)-1]
-					left = lastDisplay.Right
-					top = 0
 				}
 
 				displays = append(displays, DisplayInfo{
-					Index:  displayIndex,
-					Name:   display.Name,
-					Left:   left,
-					Top:    top,
-					Right:  left + width,
-					Bottom: top + height,
-					Width:  width,
-					Height: height,
-					IsMain: isMain,
+					Index:   displayIndex,
+					Name:    display.Name,
+					Left:    left,
+					Top:     top,
+					Right:   left + width,
+					Bottom:  top + height,
+					Width:   width,
+					Height:  height,
+					IsMain:  isMain,
+					Rotated: isRotated,
 				})
+
+				// Move to the right for the next display
+				currentX = left + width
 				displayIndex++
 			}
 		}
@@ -646,30 +658,31 @@ end tell
 	if len(displays) == 0 {
 		displays = []DisplayInfo{
 			{
-				Index:  0,
-				Name:   "Main Display",
-				Left:   totalLeft,
-				Top:    totalTop,
-				Right:  totalRight,
-				Bottom: totalBottom,
-				Width:  totalWidth,
-				Height: totalHeight,
-				IsMain: true,
+				Index:   0,
+				Name:    "Main Display",
+				Left:    totalLeft,
+				Top:     totalTop,
+				Right:   totalRight,
+				Bottom:  totalBottom,
+				Width:   totalWidth,
+				Height:  totalHeight,
+				IsMain:  true,
+				Rotated: totalHeight > totalWidth,
 			},
 		}
 	}
 
 	text := fmt.Sprintf("Found %d display(s), total virtual desktop: %dx%d", len(displays), totalWidth, totalHeight)
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: text},
-		},
-	}, ListAllScreensResult{
-		Displays:    displays,
-		Count:       len(displays),
-		TotalWidth:  totalWidth,
-		TotalHeight: totalHeight,
-	}, nil
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: text},
+			},
+		}, ListAllScreensResult{
+			Displays:    displays,
+			Count:       len(displays),
+			TotalWidth:  totalWidth,
+			TotalHeight: totalHeight,
+		}, nil
 }
 
 // ---------- Tool 8: Move app to specific screen with presets ----------

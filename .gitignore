@@ -13,6 +13,7 @@ wm-mcp
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -25,3 +26,4 @@ Thumbs.db
 vendor/
 *.mod
 *.sum
+.task
